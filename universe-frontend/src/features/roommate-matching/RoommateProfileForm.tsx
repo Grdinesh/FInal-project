@@ -1,163 +1,186 @@
-// src/features/roommate-matching/RoommateProfileForm.tsx
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, Typography, Paper, Grid, TextField, FormControl, 
-  InputLabel, Select, MenuItem, Button, CircularProgress,
-  Alert, Slider, FormHelperText, InputAdornment
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  CircularProgress,
+  TextField,
+  Avatar
 } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { useNavigate } from 'react-router-dom';
-import { useFormik } from 'formik';
-import * as yup from 'yup';
+import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { RoommateProfile, UserProfile } from './types';
+import { MatchProfile, MatchRequest, Message } from './types';
 
-const validationSchema = yup.object({
-  SmokingRooms_preference: yup.string().required('Smoking preference is required'),
-  drinking_preference: yup.string().required('Drinking preference is required'),
-  sleep_habits: yup.string().required('Sleep habits is required'),
-  study_habits: yup.string().required('Study habits is required'),
-  guests_preference: yup.string().required('Guests preference is required'),
-  cleanliness_level: yup.number().required('Cleanliness level is required').min(1).max(5),
-  max_rent_budget: yup.number().nullable().positive('Budget must be positive'),
-  preferred_move_in_date: yup.date().nullable(),
-});
-
-const RoommateProfileForm: React.FC = () => {
+const RoommateDetail: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState<boolean>(true);
-  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const [profile, setProfile] = useState<MatchProfile | null>(null);
+  const [matchRequest, setMatchRequest] = useState<MatchRequest | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  const socketRef = useRef<WebSocket | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
+  const fetchMessages = async () => {
+    if (!matchRequest?.id) return;
   
-  useEffect(() => {
-    fetchUserProfile();
-  }, []);
-  
-  const fetchUserProfile = async () => {
-    setLoading(true);
     try {
-      // Fetch the user's profile
-      const profileResponse = await axios.get('/api/profiles/?current_user=true');
-      if (profileResponse.data.length === 0) {
-        setError('Please complete your user profile first');
-        setLoading(false);
-        return;
-      }
-      
-      setUserProfile(profileResponse.data[0]);
-      
-      // Fetch the user's roommate profile if it exists
-      try {
-        const roommateProfileResponse = await axios.get(`/api/roommate-profiles/?user_profile=${profileResponse.data[0].id}`);
-        if (roommateProfileResponse.data.length > 0) {
-          const roommateProfile = roommateProfileResponse.data[0];
-          formik.setValues({
-            SmokingRooms_preference: roommateProfile.smoking_preference || 'no_preference',
-            drinking_preference: roommateProfile.drinking_preference || 'no_preference',
-            sleep_habits: roommateProfile.sleep_habits || 'average',
-            study_habits: roommateProfile.study_habits || 'library',
-            guests_preference: roommateProfile.guests_preference || 'no_preference',
-            cleanliness_level: roommateProfile.cleanliness_level || 3,
-            max_rent_budget: roommateProfile.max_rent_budget || null,
-            preferred_move_in_date: roommateProfile.preferred_move_in_date ? new Date(roommateProfile.preferred_move_in_date) : null,
-          });
-        }
-      } catch (err) {
-        // It's okay if the roommate profile doesn't exist yet
-      }
-      
-      setLoading(false);
+      const res = await axios.get(`/api/messages/?match_request=${matchRequest.id}`);
+      setMessages(res.data);
     } catch (err) {
-      setLoading(false);
-      setError('Failed to fetch user profile');
-      console.error('Error fetching profile:', err);
+      console.error('Error fetching messages:', err);
     }
   };
-  
-  const formik = useFormik({
-    initialValues: {
-      SmokingRooms_preference: 'no_preference',
-      drinking_preference: 'no_preference',
-      sleep_habits: 'average',
-      study_habits: 'library',
-      guests_preference: 'no_preference',
-      cleanliness_level: 3,
-      max_rent_budget: null as number | null,
-      preferred_move_in_date: null as Date | null,
-    },
-    validationSchema,
-    onSubmit: async (values) => {
-      if (!userProfile) {
-        setError("Your user profile couldn't be found. Please complete your profile first.");
-        return;
+
+  const fetchRoommateProfile = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`/api/roommate-matches/${id}/`);
+      setProfile(response.data);
+      setMatchRequest(response.data.match_request || null);
+
+      if (response.data.match_request?.status === 'accepted') {
+        const msgRes = await axios.get(`/api/messages/?match_request=${response.data.match_request.id}`);
+        setMessages(msgRes.data);
       }
-        
-      setSubmitting(true);
-      setError(null);
-        
-      try {
-        // Check if roommate profile already exists
-        const checkResponse = await axios.get(`/api/roommate-profiles/?user_profile=${userProfile.id}`);
-        const profileExists = checkResponse.data.length > 0;
-        const profileId = profileExists ? checkResponse.data[0].id : null;
-          
-        // Create API data with user_profile_id explicitly set
-        const apiData = {
-          smoking_preference: values.SmokingRooms_preference,
-          drinking_preference: values.drinking_preference,
-          sleep_habits: values.sleep_habits,
-          study_habits: values.study_habits,
-          guests_preference: values.guests_preference,
-          cleanliness_level: values.cleanliness_level,
-          max_rent_budget: values.max_rent_budget,
-          user_profile: userProfile.id
-        } as any
-          
-        // Format the date properly if it exists
-        if (values.preferred_move_in_date) {
-          const date = values.preferred_move_in_date;
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          apiData.preferred_move_in_date = `${year}-${month}-${day}`;
-        }
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching roommate profile:', err);
+      setError('Failed to fetch roommate profile.');
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    let idleTimeout: NodeJS.Timeout;
   
-        console.log('Sending to API:', apiData); // Debug log
-          
-        // Make the API request with the properly formatted data
-        let response;
-        if (profileExists) {
-          response = await axios.patch(`/api/roommate-profiles/${profileId}/`, apiData);
-        } else {
-          response = await axios.post('/api/roommate-profiles/', apiData);
-        }
-          
-        setSubmitting(false);
-        navigate('/roommate-matching');
-      } catch (err: any) {
-        setSubmitting(false);
-        console.error('API Error:', err.response?.data); // Debug log
-        if (err.response && err.response.data) {
-          // Extract error message from response
-          const errorData = err.response.data;
-          if (typeof errorData === 'object') {
-            const errorMessages = Object.entries(errorData)
-              .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
-              .join(', ');
-            setError(`Failed to save profile: ${errorMessages}`);
-          } else {
-            setError(`Failed to save profile: ${errorData}`);
-          }
-        } else {
-          setError('Failed to save roommate profile. Please check your inputs and try again.');
-        }
+    // If user is not typing and match is accepted, refresh messages after 5s
+    if (!isTyping && matchRequest?.status === 'accepted') {
+      idleTimeout = setTimeout(() => {
+        fetchMessages();  // you'll define this separately
+      }, 2000);
+    }
+  
+    return () => clearTimeout(idleTimeout);
+  }, [isTyping, matchRequest]);
+  useEffect(() => {
+    fetchRoommateProfile();
+  }, [id]);
+
+  useEffect(() => {
+    if (!matchRequest || matchRequest.status !== 'accepted') return;
+
+    const roomId = `match_${matchRequest.id}`;
+    const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomId}/`);
+    socketRef.current = socket;
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'chat_message') {
+        const msg: Message = {
+          id: String(Date.now()),
+          content: data.message.content,
+          sender: data.message.sender,
+          timestamp: data.message.timestamp
+        };
+        setMessages((prev) => [...prev, msg]);
       }
-    },
-  });
-  
+
+      if (data.type === 'typing_indicator') {
+        setIsTyping(true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2000);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [matchRequest]);
+
+  const handleTyping = () => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'typing' }));
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !matchRequest) return;
+
+    try {
+      const res = await axios.post('/api/messages/', {
+        match_request: matchRequest.id,
+        content: newMessage.trim()
+      });
+
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            type: 'chat_message',
+            message: res.data
+          })
+        );
+      }
+
+      setNewMessage('');
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
+  };
+
+  const handleSendRequest = async () => {
+    try {
+      const receiverId = parseInt(id as string);
+      const res = await axios.post('/api/match-requests/', {
+        receiver: receiverId,
+        message: requestMessage.trim()
+      });
+      setMatchRequest(res.data);
+      setRequestMessage('');
+    } catch (err) {
+      console.error('Error sending request:', err);
+      alert('Failed to send request. Maybe one already exists.');
+    }
+  };
+
+  const handleAcceptRequest = async () => {
+    if (!matchRequest) return;
+    try {
+      await axios.post(`/api/match-requests/${matchRequest.id}/accept/`);
+      fetchRoommateProfile();
+    } catch (err) {
+      console.error('Error accepting request:', err);
+    }
+  };
+
+  const handleRejectRequest = async () => {
+    if (!matchRequest) return;
+    try {
+      await axios.post(`/api/match-requests/${matchRequest.id}/reject/`);
+      setMatchRequest(null);
+    } catch (err) {
+      console.error('Error rejecting request:', err);
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!matchRequest) return;
+    try {
+      await axios.delete(`/api/match-requests/${matchRequest.id}/`);
+      setMatchRequest(null);
+    } catch (err) {
+      console.error('Error cancelling request:', err);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -165,236 +188,164 @@ const RoommateProfileForm: React.FC = () => {
       </Box>
     );
   }
-  
-  if (error && error === 'Please complete your user profile first') {
+
+  if (error || !profile) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-        <Button 
-          variant="contained" 
-          color="primary"
-          onClick={() => navigate('/profile/edit')}
-        >
-          Complete Profile
-        </Button>
+        <Typography color="error">{error || 'Profile not found.'}</Typography>
+        <Button onClick={() => navigate('/roommate-matching')}>Back</Button>
       </Box>
     );
   }
-  
+
+  const { profile: userProfile, user } = profile;
+  const isSender = matchRequest?.sender === currentUserId;
+  const isReceiver = matchRequest?.receiver === currentUserId;
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        Roommate Preferences
+        {userProfile.first_name || user.username}
       </Typography>
-      
-      <Paper sx={{ p: 3 }}>
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-        
-        <form onSubmit={formik.handleSubmit}>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom>
-                Lifestyle Preferences
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth error={formik.touched.SmokingRooms_preference && Boolean(formik.errors.SmokingRooms_preference)}>
-                <InputLabel>Smoking Preference</InputLabel>
-                <Select
-                  name="SmokingRooms_preference"
-                  value={formik.values.SmokingRooms_preference}
-                  label="Smoking Preference"
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                >
-                  <MenuItem value="yes">I smoke</MenuItem>
-                  <MenuItem value="no">I don't smoke</MenuItem>
-                  <MenuItem value="sometimes">I smoke occasionally</MenuItem>
-                  <MenuItem value="no_preference">No preference</MenuItem>
-                </Select>
-                {formik.touched.SmokingRooms_preference && formik.errors.SmokingRooms_preference && (
-                  <FormHelperText>{formik.errors.SmokingRooms_preference}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth error={formik.touched.drinking_preference && Boolean(formik.errors.drinking_preference)}>
-                <InputLabel>Drinking Preference</InputLabel>
-                <Select
-                  name="drinking_preference"
-                  value={formik.values.drinking_preference}
-                  label="Drinking Preference"
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                >
-                  <MenuItem value="yes">I drink</MenuItem>
-                  <MenuItem value="no">I don't drink</MenuItem>
-                  <MenuItem value="sometimes">I drink occasionally</MenuItem>
-                  <MenuItem value="no_preference">No preference</MenuItem>
-                </Select>
-                {formik.touched.drinking_preference && formik.errors.drinking_preference && (
-                  <FormHelperText>{formik.errors.drinking_preference}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth error={formik.touched.sleep_habits && Boolean(formik.errors.sleep_habits)}>
-                <InputLabel>Sleep Habits</InputLabel>
-                <Select
-                  name="sleep_habits"
-                  value={formik.values.sleep_habits}
-                  label="Sleep Habits"
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                >
-                  <MenuItem value="early_riser">Early Riser</MenuItem>
-                  <MenuItem value="night_owl">Night Owl</MenuItem>
-                  <MenuItem value="average">Average</MenuItem>
-                </Select>
-                {formik.touched.sleep_habits && formik.errors.sleep_habits && (
-                  <FormHelperText>{formik.errors.sleep_habits}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth error={formik.touched.study_habits && Boolean(formik.errors.study_habits)}>
-                <InputLabel>Study Habits</InputLabel>
-                <Select
-                  name="study_habits"
-                  value={formik.values.study_habits}
-                  label="Study Habits"
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                >
-                  <MenuItem value="in_room">I prefer to study in my room</MenuItem>
-                  <MenuItem value="library">I prefer to study in the library</MenuItem>
-                  <MenuItem value="other_places">I prefer to study in other places</MenuItem>
-                </Select>
-                {formik.touched.study_habits && formik.errors.study_habits && (
-                  <FormHelperText>{formik.errors.study_habits}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth error={formik.touched.guests_preference && Boolean(formik.errors.guests_preference)}>
-                <InputLabel>Guests Preference</InputLabel>
-                <Select
-                  name="guests_preference"
-                  value={formik.values.guests_preference}
-                  label="Guests Preference"
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                >
-                  <MenuItem value="yes">I'm okay with guests</MenuItem>
-                  <MenuItem value="no">I prefer no guests</MenuItem>
-                  <MenuItem value="sometimes">I'm okay with occasional guests</MenuItem>
-                  <MenuItem value="no_preference">No preference</MenuItem>
-                </Select>
-                {formik.touched.guests_preference && formik.errors.guests_preference && (
-                  <FormHelperText>{formik.errors.guests_preference}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Typography id="cleanliness-slider" gutterBottom>
-                Cleanliness Level: {formik.values.cleanliness_level}
-              </Typography>
-              <Slider
-                name="cleanliness_level"
-                value={formik.values.cleanliness_level}
-                onChange={(_, value) => formik.setFieldValue('cleanliness_level', value)}
-                aria-labelledby="cleanliness-slider"
-                valueLabelDisplay="auto"
-                step={1}
-                marks
-                min={1}
-                max={5}
-              />
-              {formik.touched.cleanliness_level && formik.errors.cleanliness_level && (
-                <FormHelperText error>{formik.errors.cleanliness_level}</FormHelperText>
-              )}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="caption">Very Messy (1)</Typography>
-                <Typography variant="caption">Very Clean (5)</Typography>
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                Housing Preferences
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                name="max_rent_budget"
-                label="Maximum Monthly Rent Budget"
-                value={formik.values.max_rent_budget || ''}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                error={formik.touched.max_rent_budget && Boolean(formik.errors.max_rent_budget)}
-                helperText={formik.touched.max_rent_budget && formik.errors.max_rent_budget}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                }}
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <DatePicker
-                  label="Preferred Move-in Date"
-                  value={formik.values.preferred_move_in_date}
-                  onChange={(value) => formik.setFieldValue('preferred_move_in_date', value)}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true,
-                      error: formik.touched.preferred_move_in_date && Boolean(formik.errors.preferred_move_in_date),
-                      helperText: formik.touched.preferred_move_in_date && formik.errors.preferred_move_in_date as string,
-                    },
-                  }}
-                />
-              </LocalizationProvider>
-            </Grid>
-            
-            <Grid item xs={12} sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              <Button
-                variant="outlined"
-                onClick={() => navigate('/roommate-matching')}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <CircularProgress size={24} />
-                ) : (
-                  'Save Preferences'
-                )}
-              </Button>
-            </Grid>
-          </Grid>
-        </form>
+
+      <Avatar sx={{ width: 100, height: 100, mb: 2 }}>
+        {(userProfile.first_name || user.username).charAt(0).toUpperCase()}
+      </Avatar>
+
+      {/* Profile Info */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography><strong>Age:</strong> {userProfile.age || 'N/A'}</Typography>
+        <Typography><strong>Gender:</strong> {userProfile.gender}</Typography>
+        <Typography><strong>Major:</strong> {userProfile.course_major}</Typography>
+        <Typography><strong>Bio:</strong> {userProfile.bio}</Typography>
+        <Typography><strong>Interests:</strong> {userProfile.interests}</Typography>
+        <Typography><strong>Cleanliness:</strong> {profile.roommate_profile.cleanliness_level}/5</Typography>
+        <Typography><strong>Budget:</strong> ${profile.roommate_profile.max_rent_budget || 'N/A'}</Typography>
+        <Typography><strong>Move-in Date:</strong> {profile.roommate_profile.preferred_move_in_date || 'N/A'}</Typography>
       </Paper>
+
+      {/* Match Request UI */}
+      {!matchRequest && (
+        <Box>
+          <Typography gutterBottom>Send a match request:</Typography>
+          <TextField
+            label="Message"
+            fullWidth
+            multiline
+            rows={2}
+            value={requestMessage}
+            onChange={(e) => setRequestMessage(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <Button variant="contained" onClick={handleSendRequest} disabled={!requestMessage.trim()}>
+            Send Match Request
+          </Button>
+        </Box>
+      )}
+
+      {matchRequest?.status === 'pending' && isReceiver && (
+        <Box sx={{ mt: 2 }}>
+          <Typography>You have received a match request:</Typography>
+          <Typography>Message: {matchRequest.message}</Typography>
+          <Button variant="contained" color="success" onClick={handleAcceptRequest} sx={{ mr: 1 }}>
+            Accept
+          </Button>
+          <Button variant="outlined" color="error" onClick={handleRejectRequest}>
+            Reject
+          </Button>
+        </Box>
+      )}
+
+      {matchRequest?.status === 'pending' && isSender && (
+        <Box sx={{ mt: 2 }}>
+          <Typography>You have sent a match request.</Typography>
+          <Typography>Message: {matchRequest.message}</Typography>
+          <Button variant="outlined" color="warning" onClick={handleCancelRequest}>
+            Cancel Request
+          </Button>
+        </Box>
+      )}
+
+      {/* Chat Section */}
+      {matchRequest?.status === 'accepted' && (
+        <Paper sx={{ mt: 4, p: 3 }}>
+          <Typography variant="h6" gutterBottom>Chat with {userProfile.first_name || user.username}</Typography>
+
+          {isTyping && (
+            <Typography variant="caption" color="text.secondary">
+              {userProfile.first_name || user.username} is typing...
+            </Typography>
+          )}
+
+          <Box sx={{ height: 300, overflowY: 'auto', mt: 2, mb: 2 }}>
+            {messages.length === 0 ? (
+              <Typography>No messages yet.</Typography>
+            ) : (
+              messages.map((msg) => {
+                const isMe = msg.sender.id === currentUserId;
+                const senderName = msg.sender.first_name || msg.sender.username;
+                const initials = senderName.charAt(0).toUpperCase();
+
+                return (
+                  <Box
+                    key={msg.id}
+                    sx={{
+                      display: 'flex',
+                      flexDirection: isMe ? 'row-reverse' : 'row',
+                      alignItems: 'flex-start',
+                      mb: 1,
+                    }}
+                  >
+                    <Avatar sx={{ bgcolor: isMe ? 'primary.main' : 'grey.500', ml: isMe ? 1 : 0, mr: isMe ? 0 : 1 }}>
+                      {initials}
+                    </Avatar>
+                    <Box sx={{ maxWidth: '70%' }}>
+                      <Paper
+                        sx={{
+                          p: 1.5,
+                          bgcolor: isMe ? 'primary.main' : 'grey.100',
+                          color: isMe ? 'primary.contrastText' : 'text.primary',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="bold">
+                          {senderName}
+                        </Typography>
+                        <Typography variant="body1">{msg.content}</Typography>
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                          {new Date(msg.timestamp).toLocaleString()}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  </Box>
+                );
+              })
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                handleTyping();
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleSendMessage();
+                  e.preventDefault();
+                }
+              }}
+              placeholder="Type a message..."
+            />
+            <Button variant="contained" onClick={handleSendMessage} disabled={!newMessage.trim()}>
+              Send
+            </Button>
+          </Box>
+        </Paper>
+      )}
     </Box>
   );
 };
 
-export default RoommateProfileForm;
+export default RoommateDetail;
