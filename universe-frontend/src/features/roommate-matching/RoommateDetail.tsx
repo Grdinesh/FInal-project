@@ -29,6 +29,12 @@ const RoommateDetail: React.FC = () => {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
 
+  useEffect(() => {
+    console.log("Logged-in user ID:", localStorage.getItem('user_id'));
+    console.log("Current profile ID:", id);
+    console.log("Current match request:", matchRequest);
+  }, [matchRequest]);
+  console.log("Parsed currentUserId:", currentUserId);
   const fetchRoommateProfile = async () => {
     setLoading(true);
     try {
