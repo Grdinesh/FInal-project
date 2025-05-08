@@ -4,9 +4,109 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.db.models import Q
 from django.contrib.auth.models import User
-from .models import MatchRequest, CompatibilityScore
-from .serializers import MatchRequestSerializer, CompatibilityScoreSerializer, MatchProfileSerializer
+from .models import MatchRequest, CompatibilityScore, Message
+from .serializers import MatchRequestSerializer, CompatibilityScoreSerializer, MatchProfileSerializer, MessageSerializer
 from user_profiles.models import UserProfile, RoommateProfile
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.models import User
+from django.db.models import Q
+from rest_framework import viewsets, status, permissions
+from rest_framework.response import Response
+from user_profiles.models import UserProfile, RoommateProfile
+from user_profiles.serializers import UserSerializer, UserProfileSerializer, RoommateProfileSerializer
+from .models import MatchRequest, CompatibilityScore
+
+import logging
+logger = logging.getLogger(__name__)
+
+# def create(self, request, *args, **kwargs):
+#     logger.info(f"MatchRequest create called with data: {request.data}")
+#     logger.info(f"Request content type: {request.content_type}")
+#     logger.info(f"Request user: {request.user.username} (ID: {request.user.id})")
+    
+#     # Validate receiver exists
+#     receiver_id = request.data.get('receiver')
+#     logger.info(f"Receiver ID from request: {receiver_id} (Type: {type(receiver_id)})")
+    
+#     if not receiver_id:
+#         logger.error("No receiver ID provided")
+#         return Response(
+#             {"error": "Receiver ID is required"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Try to convert receiver_id to int if it's a string
+#     try:
+#         if isinstance(receiver_id, str):
+#             receiver_id = int(receiver_id)
+#     except ValueError:
+#         logger.error(f"Invalid receiver ID format: {receiver_id}")
+#         return Response(
+#             {"error": f"Invalid receiver ID format: {receiver_id}"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Check if receiver exists
+#     try:
+#         receiver = User.objects.get(id=receiver_id)
+#         logger.info(f"Receiver found: {receiver.username} (ID: {receiver.id})")
+#     except User.DoesNotExist:
+#         logger.error(f"Receiver with ID {receiver_id} does not exist")
+#         return Response(
+#             {"error": f"Receiver with ID {receiver_id} does not exist"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Check if sender and receiver are different
+#     if request.user.id == receiver.id:
+#         logger.error("Sender and receiver are the same user")
+#         return Response(
+#             {"error": "You cannot send a match request to yourself"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # Check if a request already exists
+#     existing_request = MatchRequest.objects.filter(
+#         (Q(sender=request.user) & Q(receiver=receiver)) |
+#         (Q(sender=receiver) & Q(receiver=request.user))
+#     ).first()
+    
+#     if existing_request:
+#         logger.error(f"Match request already exists with status: {existing_request.status}")
+#         return Response(
+#             {"error": f"A match request already exists between these users (status: {existing_request.status})"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     # At this point, everything should be valid
+#     logger.info("All validation passed, creating match request")
+    
+#     # Create the serializer with the corrected data
+#     serializer_data = {
+#         'receiver': receiver_id,
+#         'message': request.data.get('message', 'I would like to connect as potential roommates!')
+#     }
+    
+#     serializer = self.get_serializer(data=serializer_data)
+    
+#     # Check if serializer is valid
+#     if not serializer.is_valid():
+#         logger.error(f"Serializer validation failed: {serializer.errors}")
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+#     # Save the serializer
+#     try:
+#         serializer.save(sender=request.user, status='pending')
+#         logger.info("Match request created successfully")
+#     except Exception as e:
+#         logger.error(f"Error saving match request: {str(e)}")
+#         return Response(
+#             {"error": f"Failed to create match request: {str(e)}"},
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     headers = self.get_success_headers(serializer.data)
+#     return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 class MatchRequestViewSet(viewsets.ModelViewSet):
     queryset = MatchRequest.objects.all()
@@ -20,54 +120,97 @@ class MatchRequestViewSet(viewsets.ModelViewSet):
         ).order_by('-created_at')
     
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        # In your Django view
+        print("Received data:", request.data)
+        print("Receiver:", request.data.get('receiver'))
+        print("Message:", request.data.get('message'))
+        logger.info(f"MatchRequest create called with data: {request.data}")
+        logger.info(f"Request content type: {request.content_type}")
+        logger.info(f"Request user: {request.user.username} (ID: {request.user.id})")
         
-        # Check if a request already exists
-        receiver_id = serializer.validated_data.get('receiver').id
-        existing_request = MatchRequest.objects.filter(
-            (Q(sender=request.user) & Q(receiver_id=receiver_id)) |
-            (Q(sender_id=receiver_id) & Q(receiver=request.user))
-        ).first()
+        # Validate receiver exists
+        receiver_id = request.data.get('receiver')
+        logger.info(f"Receiver ID from request: {receiver_id} (Type: {type(receiver_id)})")
         
-        if existing_request:
+        if not receiver_id:
+            logger.error("No receiver ID provided")
             return Response(
-                {"detail": "A match request already exists between these users."},
+                {"error": "Receiver ID is required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        serializer.save(sender=request.user, status='pending')
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
-    @action(detail=True, methods=['post'])
-    def accept(self, request, pk=None):
-        match_request = self.get_object()
-        
-        if match_request.receiver != request.user:
+        # Try to convert receiver_id to int if it's a string
+        try:
+            if isinstance(receiver_id, str):
+                receiver_id = int(receiver_id)
+        except ValueError:
+            logger.error(f"Invalid receiver ID format: {receiver_id}")
             return Response(
-                {"detail": "You don't have permission to accept this request."},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": f"Invalid receiver ID format: {receiver_id}"},
+                status=status.HTTP_400_BAD_REQUEST
             )
         
-        match_request.status = 'accepted'
-        match_request.save()
-        
-        return Response({"status": "Match request accepted"})
-    
-    @action(detail=True, methods=['post'])
-    def reject(self, request, pk=None):
-        match_request = self.get_object()
-        
-        if match_request.receiver != request.user:
+        # Check if receiver exists
+        try:
+            receiver = User.objects.get(id=receiver_id)
+            logger.info(f"Receiver found: {receiver.username} (ID: {receiver.id})")
+        except User.DoesNotExist:
+            logger.error(f"Receiver with ID {receiver_id} does not exist")
             return Response(
-                {"detail": "You don't have permission to reject this request."},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": f"Receiver with ID {receiver_id} does not exist"},
+                status=status.HTTP_400_BAD_REQUEST
             )
         
-        match_request.status = 'rejected'
-        match_request.save()
+        # Check if sender and receiver are different
+        if request.user.id == receiver.id:
+            logger.error("Sender and receiver are the same user")
+            return Response(
+                {"error": "You cannot send a match request to yourself"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        return Response({"status": "Match request rejected"})
+        # Check if a request already exists
+        existing_request = MatchRequest.objects.filter(
+            (Q(sender=request.user) & Q(receiver=receiver)) |
+            (Q(sender=receiver) & Q(receiver=request.user))
+        ).first()
+        
+        if existing_request:
+            logger.error(f"Match request already exists with status: {existing_request.status}")
+            return Response(
+                {"error": f"A match request already exists between these users (status: {existing_request.status})"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # At this point, everything should be valid
+        logger.info("All validation passed, creating match request")
+        
+        # Create the serializer with the corrected data
+        serializer_data = {
+            'receiver': receiver_id,
+            'message': request.data.get('message', 'I would like to connect as potential roommates!')
+        }
+        
+        serializer = self.get_serializer(data=serializer_data)
+        
+        # Check if serializer is valid
+        if not serializer.is_valid():
+            logger.error(f"Serializer validation failed: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Save the serializer
+        try:
+            serializer.save(sender=request.user, status='pending')
+            logger.info("Match request created successfully")
+        except Exception as e:
+            logger.error(f"Error saving match request: {str(e)}")
+            return Response(
+                {"error": f"Failed to create match request: {str(e)}"},
+                status=status.HTTP_201_CREATED
+            )
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 class RoommateMatchingViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -110,11 +253,13 @@ class RoommateMatchingViewSet(viewsets.ViewSet):
             
             # Get match status if any
             match_request = MatchRequest.objects.filter(
-                (Q(sender=request.user) & Q(receiver=other_user)) |
-                (Q(sender=other_user) & Q(receiver=request.user))
-            ).first()
-            
+            (Q(sender=request.user) & Q(receiver=other_user)) |
+            (Q(sender=other_user) & Q(receiver=request.user))
+                ).first()
+
             match_status = match_request.status if match_request else 'none'
+            match_request_data = MatchRequestSerializer(match_request, context={'request': request}).data if match_request else None
+
             
             # Add to matches
             matches.append({
@@ -128,8 +273,58 @@ class RoommateMatchingViewSet(viewsets.ViewSet):
         # Sort by compatibility score (highest first)
         matches.sort(key=lambda x: x['compatibility_score'], reverse=True)
         
-        serializer = MatchProfileSerializer(matches, many=True)
+        serializer = MatchProfileSerializer(matches, many=True, context={'request': request})
         return Response(serializer.data)
+    
+    def retrieve(self, request, pk=None):
+        """
+        Get details of a specific potential roommate match
+        """
+        try:
+            print(f"Retrieving roommate match with pk={pk} for user={request.user.username}")
+            # Get the user profile of the requested user
+            other_user = get_object_or_404(User, id=pk)
+            other_user_profile = get_object_or_404(UserProfile, user=other_user)
+            other_roommate_profile = get_object_or_404(RoommateProfile, user_profile=other_user_profile)
+            
+            # Get current user's profile
+            user_profile = get_object_or_404(UserProfile, user=request.user)
+            roommate_profile = get_object_or_404(RoommateProfile, user_profile=user_profile)
+            
+            # Calculate compatibility score
+            compatibility, created = CompatibilityScore.objects.get_or_create(
+                user1=request.user,
+                user2=other_user,
+                defaults={'score': 50.0}  # Default score
+            )
+            
+            # Check if a match request exists
+            match_request = MatchRequest.objects.filter(
+            (Q(sender=request.user) & Q(receiver=other_user)) |
+            (Q(sender=other_user) & Q(receiver=request.user))
+                ).first()
+
+            match_status = match_request.status if match_request else 'none'
+            match_request_data = MatchRequestSerializer(match_request, context={'request': request}).data if match_request else None
+
+            
+            # Create response data
+            data = {
+                'user': UserSerializer(other_user).data,
+                'profile': UserProfileSerializer(other_user_profile).data,
+                'roommate_profile': RoommateProfileSerializer(other_roommate_profile).data,
+                'compatibility_score': compatibility.score,
+                'match_status': match_status,
+                'match_request': match_request_data, 'match_request': match_request_data
+            }
+            
+            return Response(data)
+        except (UserProfile.DoesNotExist, RoommateProfile.DoesNotExist):
+            return Response(
+                {"detail": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
     
     def _calculate_compatibility(self, user_profile, other_profile):
         """
@@ -200,3 +395,34 @@ class RoommateMatchingViewSet(viewsets.ViewSet):
         # Calculate final percentage score
         final_score = (score / total_weight * 100) if total_weight > 0 else 50
         return round(final_score, 1)
+
+class MessageViewSet(viewsets.ModelViewSet):
+    serializer_class = MessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Only show messages for match requests the user is part of
+        return Message.objects.filter(
+            match_request__in=MatchRequest.objects.filter(
+                Q(sender=self.request.user) | Q(receiver=self.request.user)
+            )
+        ).order_by('timestamp')
+    
+    def perform_create(self, serializer):
+        match_request_id = self.request.data.get('match_request')
+        match_request = get_object_or_404(
+            MatchRequest.objects.filter(
+                Q(sender=self.request.user) | Q(receiver=self.request.user),
+                status='accepted'  # Only allow messages for accepted requests
+            ),
+            id=match_request_id
+        )
+        
+        # Update last message timestamp on the match request
+        match_request.last_message_at = timezone.now()
+        match_request.save()
+        
+        serializer.save(
+            sender=self.request.user,
+            match_request=match_request
+        )

@@ -17,6 +17,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['user']
 
+    profile_picture = serializers.SerializerMethodField()
+
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.profile_picture.url)
+        return None
     def update(self, instance, validated_data):
         # Update user's first_name and last_name if provided
         if 'first_name' in validated_data:
