@@ -136,7 +136,7 @@ const MarketplaceItemForm: React.FC = () => {
   const handleSubmit = async (values: FormValues) => {
     setSubmitting(true);
     setError(null);
-    
+  
     try {
       const formData = new FormData();
       formData.append('title', values.title);
@@ -145,39 +145,33 @@ const MarketplaceItemForm: React.FC = () => {
       formData.append('item_type', values.item_type);
       formData.append('condition', values.condition);
       formData.append('location', values.location);
-      
+  
       if (values.item_pickup_deadline) {
         formData.append('item_pickup_deadline', values.item_pickup_deadline);
       }
-      
+  
       // Append new images
       selectedImages.forEach((image) => {
         formData.append('images', image);
       });
-      
+  
       let response;
       if (isEditMode) {
-        response = await axios.patch(`/api/marketplace-items/${id}/`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+        response = await axios.patch(`/api/marketplace-items/${id}/`, formData);        ;
       } else {
-        response = await axios.post('/api/marketplace-items/', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+        response = await axios.post('/api/marketplace-items/', formData);
       }
-      
+  
       setSubmitting(false);
-      navigate(`/marketplace/${response.data.id}`);
+      // ✅ Force full reload to fetch updated images
+      window.location.href = `/marketplace/${response.data.id}`;
     } catch (err) {
       setSubmitting(false);
       setError('Failed to save item. Please check your inputs and try again.');
       console.error('Error submitting form:', err);
     }
   };
+  
   
   if (loading) {
     return (

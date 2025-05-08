@@ -69,7 +69,7 @@ def user_detail(request):
 router = routers.DefaultRouter()
 # router.register(r'auth', AuthViewSet, basename='auth')
 from user_profiles.views import UserViewSet, UserProfileViewSet, RoommateProfileViewSet
-from marketplace.views import MarketplaceItemViewSet, MarketplaceMessageViewSet
+from marketplace.views import MarketplaceItemViewSet, MarketplaceMessageViewSet, ItemImageViewSet
 from roommate_matching.views import MatchRequestViewSet, RoommateMatchingViewSet
 
 # router = DefaultRouter()
@@ -80,6 +80,7 @@ router.register(r'profiles', UserProfileViewSet)
 router.register(r'roommate-profiles', RoommateProfileViewSet)
 # Marketplace
 router.register(r'marketplace-items', MarketplaceItemViewSet)
+router.register(r'item-images', ItemImageViewSet)
 router.register(r'marketplace-messages', MarketplaceMessageViewSet)
 # Roommate Matching
 router.register(r'match-requests', MatchRequestViewSet)

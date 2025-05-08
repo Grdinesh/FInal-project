@@ -13,6 +13,9 @@ class MarketplaceItemViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'description', 'item_type']
     ordering_fields = ['price', 'posted_date']
+
+    def get_serializer_context(self):
+        return {'request': self.request}
     
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -44,19 +47,31 @@ class MarketplaceItemViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def mark_as_sold(self, request, pk=None):
-        item = self.get_object()
-        
-        # Check if the user is the seller
+        item = self.get_object()  # ✅ Define item here
         if item.seller != request.user:
             return Response(
-                {"detail": "You don't have permission to mark this item as sold."},
+                {"detail": "Unauthorized"},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
         item.is_sold = True
         item.save()
-        
         return Response({"status": "Item marked as sold"})
+
+        
+    @action(detail=True, methods=['post'])
+    def mark_as_unsold(self, request, pk=None):
+        item = self.get_object()
+
+        if item.seller != request.user:
+            return Response(
+                {"detail": "You don't have permission to mark this item as unsold."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        item.is_sold = False
+        item.save()
+        return Response({"status": "Item marked as unsold"})
+
 
 class MarketplaceMessageViewSet(viewsets.ModelViewSet):
     queryset = MarketplaceMessage.objects.all().order_by('-timestamp')
@@ -93,3 +108,17 @@ class MarketplaceMessageViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(messages, many=True)
         return Response(serializer.data)
+
+class ItemImageViewSet(viewsets.ModelViewSet):
+    queryset = ItemImage.objects.all()
+    serializer_class = ItemImageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def destroy(self, request, *args, **kwargs):
+        image = self.get_object()
+        if image.item.seller != request.user:
+            return Response(
+                {"detail": "You don't have permission to delete this image."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)

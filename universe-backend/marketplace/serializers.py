@@ -8,7 +8,7 @@ class ItemImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image']
 
 class MarketplaceItemSerializer(serializers.ModelSerializer):
-    images = ItemImageSerializer(many=True, read_only=True)
+    images = ItemImageSerializer(many=True, read_only=True, default=list)
     seller_username = serializers.SerializerMethodField()
     
     class Meta:
@@ -20,8 +20,37 @@ class MarketplaceItemSerializer(serializers.ModelSerializer):
         return obj.seller.username
     
     def create(self, validated_data):
-        validated_data['seller'] = self.context['request'].user
-        return super().create(validated_data)
+        request = self.context.get('request')
+        images = request.FILES.getlist('images')
+        print("FILES RECEIVED:", request.FILES.getlist('images'))
+
+        # Create the item
+        item = MarketplaceItem.objects.create(
+            seller=request.user,
+            **validated_data
+        )
+
+        # Save associated images
+        for image in images:
+            ItemImage.objects.create(item=item, image=image)
+
+        return item
+
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+        images = request.FILES.getlist('images')
+
+        # Update base fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Save new images if any
+        for image in images:
+            ItemImage.objects.create(item=instance, image=image)
+
+        return instance
+
 
 class MarketplaceMessageSerializer(serializers.ModelSerializer):
     sender_username = serializers.SerializerMethodField()
