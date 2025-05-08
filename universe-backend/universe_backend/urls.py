@@ -29,6 +29,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 from django.conf.urls.static import static
+from roommate_matching.views import MatchRequestViewSet, RoommateMatchingViewSet, MessageViewSet
 # from auth_api.views import AuthViewSet, CustomAuthToken
 
 # User serializer
@@ -85,6 +86,7 @@ router.register(r'marketplace-messages', MarketplaceMessageViewSet)
 # Roommate Matching
 router.register(r'match-requests', MatchRequestViewSet)
 router.register(r'roommate-matches', RoommateMatchingViewSet, basename='roommate-matches')
+router.register(r'messages', MessageViewSet)
 
 # urlpatterns = [
 #     path('admin/', admin.site.urls),

@@ -103,24 +103,56 @@ const RoommateList: React.FC = () => {
   
   const sendMatchRequest = async (receiverId: number) => {
     try {
-      await axios.post('/api/match-requests/', {
-        receiver: receiverId,
-        message: 'I would like to connect as potential roommates!',
+      console.log('Sending match request to receiverId:', receiverId);
+      console.log('Type of receiverId:', typeof receiverId);
+      
+      // Make sure receiverId is a number
+      const numericReceiverId = Number(receiverId);
+      
+      const requestData = {
+        receiver: numericReceiverId,
+        message: 'I would like to connect as potential roommates!'
+      };
+      
+      console.log('Request data being sent:', JSON.stringify(requestData));
+      
+      // Add headers for debugging
+      const response = await axios.post('/api/match-requests/', requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
-      // Update the local state to reflect the new match request
+      console.log('Match request successful, response:', response.data);
+      
+      // Update UI
       setMatches(prev => 
         prev.map(match => 
-          match.user.id === receiverId 
+          match.user.id === numericReceiverId 
             ? { ...match, match_status: 'pending' } 
             : match
         )
       );
+      
     } catch (err) {
-      console.error('Error sending match request:', err);
+      if (axios.isAxiosError(err)) {
+        console.error('Axios error details:');
+        console.error('Status:', err.response?.status);
+        console.error('Response data:', JSON.stringify(err.response?.data));
+        console.error('Response headers:', err.response?.headers);
+        console.error('Request config:', err.config);
+        
+        // Display error to user
+        const errorMessage = err.response?.data?.error || 
+                            err.response?.data?.detail || 
+                            'Failed to send roommate request';
+        alert(errorMessage);
+      } else {
+        console.error('Non-Axios error:', err);
+        alert('An unexpected error occurred');
+      }
     }
   };
-  
   const cancelMatchRequest = async (matchId: number) => {
     try {
       await axios.delete(`/api/match-requests/${matchId}/`);
