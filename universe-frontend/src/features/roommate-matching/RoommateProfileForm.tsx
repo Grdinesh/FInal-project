@@ -62,7 +62,7 @@ const RoommateDetail: React.FC = () => {
     let idleTimeout: NodeJS.Timeout;
   
     // If user is not typing and match is accepted, refresh messages after 5s
-    if (!isTyping && matchRequest?.status === 'accepted') {
+    if ( matchRequest?.status === 'accepted') {
       idleTimeout = setTimeout(() => {
         fetchMessages();  // you'll define this separately
       }, 2000);
