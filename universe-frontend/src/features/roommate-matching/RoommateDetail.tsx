@@ -28,6 +28,16 @@ const RoommateDetail: React.FC = () => {
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
+  const fetchMessages = async () => {
+    if (!matchRequest?.id) return;
+  
+    try {
+      const res = await axios.get(`/api/messages/?match_request=${matchRequest.id}`);
+      setMessages(res.data);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  };
 
   const fetchRoommateProfile = async () => {
     setLoading(true);
@@ -48,7 +58,18 @@ const RoommateDetail: React.FC = () => {
       setLoading(false);
     }
   };
-
+  useEffect(() => {
+    let idleTimeout: NodeJS.Timeout;
+  
+    // If user is not typing and match is accepted, refresh messages after 5s
+    if (!isTyping && matchRequest?.status === 'accepted') {
+      idleTimeout = setTimeout(() => {
+        fetchMessages();  // you'll define this separately
+      }, 2000);
+    }
+  
+    return () => clearTimeout(idleTimeout);
+  }, [isTyping, matchRequest]);
   useEffect(() => {
     fetchRoommateProfile();
   }, [id]);
