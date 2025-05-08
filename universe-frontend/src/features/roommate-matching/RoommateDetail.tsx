@@ -1,144 +1,165 @@
-// src/features/roommate-matching/RoommateDetail.tsx
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, Typography, Grid, Paper, Chip, Button, Divider, 
-  CircularProgress, Avatar, Rating, Dialog, DialogTitle, 
-  DialogContent, DialogActions, TextField, List, ListItem, 
-  ListItemText, ListItemAvatar
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  CircularProgress,
+  TextField,
+  Avatar
 } from '@mui/material';
-import { 
-  PersonOutline, School, SmokingRooms, LocalBar, NightsStay, 
-  MenuBook, People, CleaningServices, AttachMoney, Event
-} from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { MatchProfile, MatchRequest } from './types';
+import { MatchProfile, MatchRequest, Message } from './types';
 
 const RoommateDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
   const [profile, setProfile] = useState<MatchProfile | null>(null);
   const [matchRequest, setMatchRequest] = useState<MatchRequest | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [messageDialogOpen, setMessageDialogOpen] = useState<boolean>(false);
-  const [message, setMessage] = useState<string>('');
-  const [sendingRequest, setSendingRequest] = useState<boolean>(false);
-  
-  useEffect(() => {
-    fetchRoommateProfile();
-  }, [id]);
-  
+  const [newMessage, setNewMessage] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  const socketRef = useRef<WebSocket | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
+
   const fetchRoommateProfile = async () => {
     setLoading(true);
     try {
-      // Fetch the specific profile
-      const profileResponse = await axios.get(`/api/roommate-matches/${id}/`);
-      setProfile(profileResponse.data);
-      
-      // Fetch any existing match requests
-      const matchRequestsResponse = await axios.get('/api/match-requests/');
-      const requests = matchRequestsResponse.data;
-      
-      // Find any request between the current user and this roommate
-      const existingRequest = requests.find((req: MatchRequest) => 
-        (req.sender === parseInt(id as string) || req.receiver === parseInt(id as string))
-      );
-      
-      if (existingRequest) {
-        setMatchRequest(existingRequest);
+      const response = await axios.get(`/api/roommate-matches/${id}/`);
+      setProfile(response.data);
+      setMatchRequest(response.data.match_request || null);
+
+      if (response.data.match_request?.status === 'accepted') {
+        const msgRes = await axios.get(`/api/messages/?match_request=${response.data.match_request.id}`);
+        setMessages(msgRes.data);
       }
-      
+
       setLoading(false);
     } catch (err) {
+      console.error('Error fetching roommate profile:', err);
+      setError('Failed to fetch roommate profile.');
       setLoading(false);
-      setError('Failed to fetch roommate profile');
-      console.error('Error fetching profile:', err);
     }
   };
-  
-  // const handleSendRequest = async () => {
-  //   setSendingRequest(true);
-  //   try {
-  //     const response = await axios.post('/api/match-requests/', {
-  //       receiver: id,
-  //       message: message,
-  //     });
-      
-  //     setMatchRequest(response.data);
-  //     setMessageDialogOpen(false);
-  //     setSendingRequest(false);
-  //   } catch (err) {
-  //     setSendingRequest(false);
-  //     console.error('Error sending match request:', err);
-  //   }
-  // };
-  
-  const handleSendRequest = async () => {
-    setSendingRequest(true);
-    try {
-      // Ensure the id is parsed as a number
-      const receiverId = parseInt(id as string);
-      if (isNaN(receiverId)) {
-        throw new Error('Invalid user ID');
+
+  useEffect(() => {
+    fetchRoommateProfile();
+  }, [id]);
+
+  useEffect(() => {
+    if (!matchRequest || matchRequest.status !== 'accepted') return;
+
+    const roomId = `match_${matchRequest.id}`;
+    const socket = new WebSocket(`ws://localhost:8000/ws/chat/${roomId}/`);
+    socketRef.current = socket;
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'chat_message') {
+        const msg: Message = {
+          id: String(Date.now()),
+          content: data.message.content,
+          sender: data.message.sender,
+          timestamp: data.message.timestamp
+        };
+        setMessages((prev) => [...prev, msg]);
       }
-  
-      const response = await axios.post('/api/match-requests/', {
-        receiver: receiverId,
-        message: message,
+
+      if (data.type === 'typing_indicator') {
+        setIsTyping(true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2000);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [matchRequest]);
+
+  const handleTyping = () => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'typing' }));
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !matchRequest) return;
+
+    try {
+      const res = await axios.post('/api/messages/', {
+        match_request: matchRequest.id,
+        content: newMessage.trim()
       });
-      
-      // setMessageContent('');
-      // setMessageDialog(false);
-      
-      // Refresh the data to show updated match status
+
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            type: 'chat_message',
+            message: res.data
+          })
+        );
+      }
+
+      setNewMessage('');
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
+  };
+
+  const handleSendRequest = async () => {
+    try {
+      const receiverId = parseInt(id as string);
+      const res = await axios.post('/api/match-requests/', {
+        receiver: receiverId,
+        message: requestMessage.trim()
+      });
+      setMatchRequest(res.data);
+      setRequestMessage('');
+    } catch (err) {
+      console.error('Error sending request:', err);
+      alert('Failed to send request. Maybe one already exists.');
+    }
+  };
+
+  const handleAcceptRequest = async () => {
+    if (!matchRequest) return;
+    try {
+      await axios.post(`/api/match-requests/${matchRequest.id}/accept/`);
       fetchRoommateProfile();
-      setSendingRequest(false);
-    } catch (err: any) {
-      setSendingRequest(false);
-      console.error('Error sending match request:', err);
-      // Display the error message
-      const errorMessage = err.response?.data?.error || 
-                           err.response?.data?.detail || 
-                           'Failed to send request. Please try again.';
-      // You could set an error state here and display it in the UI
-      alert(errorMessage); // Simple way to show the error, replace with proper UI error handling
+    } catch (err) {
+      console.error('Error accepting request:', err);
+    }
+  };
+
+  const handleRejectRequest = async () => {
+    if (!matchRequest) return;
+    try {
+      await axios.post(`/api/match-requests/${matchRequest.id}/reject/`);
+      setMatchRequest(null);
+    } catch (err) {
+      console.error('Error rejecting request:', err);
     }
   };
 
   const handleCancelRequest = async () => {
     if (!matchRequest) return;
-    
     try {
       await axios.delete(`/api/match-requests/${matchRequest.id}/`);
       setMatchRequest(null);
     } catch (err) {
-      console.error('Error canceling match request:', err);
+      console.error('Error cancelling request:', err);
     }
   };
-  
-  const handleAcceptRequest = async () => {
-    if (!matchRequest) return;
-    
-    try {
-      await axios.post(`/api/match-requests/${matchRequest.id}/accept/`);
-      fetchRoommateProfile(); // Refresh the data
-    } catch (err) {
-      console.error('Error accepting match request:', err);
-    }
-  };
-  
-  const handleRejectRequest = async () => {
-    if (!matchRequest) return;
-    
-    try {
-      await axios.post(`/api/match-requests/${matchRequest.id}/reject/`);
-      fetchRoommateProfile(); // Refresh the data
-    } catch (err) {
-      console.error('Error rejecting match request:', err);
-    }
-  };
-  
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -146,367 +167,162 @@ const RoommateDetail: React.FC = () => {
       </Box>
     );
   }
-  
+
   if (error || !profile) {
     return (
       <Box sx={{ p: 3 }}>
-        <Typography color="error">{error || 'Profile not found'}</Typography>
-        <Button onClick={() => navigate('/roommate-matching')}>
-          Back to Roommate Matching
-        </Button>
+        <Typography color="error">{error || 'Profile not found.'}</Typography>
+        <Button onClick={() => navigate('/roommate-matching')}>Back</Button>
       </Box>
     );
   }
-  
-  const { user, profile: userProfile, roommate_profile } = profile;
-  
-  // Determine if the current user is the sender or receiver in the match request
-  const isIncomingRequest = matchRequest && matchRequest.receiver === parseInt(id as string);
-  const isOutgoingRequest = matchRequest && matchRequest.sender === parseInt(id as string);
-  
+
+  const { profile: userProfile, user } = profile;
+  const isSender = matchRequest?.sender === currentUserId;
+  const isReceiver = matchRequest?.receiver === currentUserId;
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Button onClick={() => navigate('/roommate-matching')}>
-          ← Back to Roommate Matching
-        </Button>
-      </Box>
-      
-      <Grid container spacing={3}>
-        {/* Profile Section */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-              <Avatar 
-                src={userProfile.profile_picture || undefined}
-                alt={`${userProfile.first_name} ${userProfile.last_name}`}
-                sx={{ width: 150, height: 150, mb: 2 }}
-              />
-              <Typography variant="h5" gutterBottom>
-                {userProfile.first_name} {userProfile.last_name}
-              </Typography>
-              <Chip 
-                label={`${profile.compatibility_score}% Compatible`}
-                color="primary"
-                sx={{ mb: 1 }}
-              />
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                {userProfile.age ? `${userProfile.age} years • ` : ''}
-                {userProfile.gender || 'Not specified'}
-              </Typography>
-            </Box>
-            
-            <Divider sx={{ my: 2 }} />
-            
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Basic Information
-              </Typography>
-              
-              <List dense>
-                <ListItem>
-                  <ListItemAvatar>
-                    <Avatar>
-                      <School />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText 
-                    primary="Major" 
-                    secondary={userProfile.course_major || 'Not specified'} 
-                  />
-                </ListItem>
-                
-                <ListItem>
-                  <ListItemAvatar>
-                    <Avatar>
-                      <CleaningServices />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText 
-                    primary="Cleanliness" 
-                    secondary={
-                      <Rating 
-                        value={roommate_profile.cleanliness_level} 
-                        readOnly 
-                        size="small"
-                      />
-                    } 
-                  />
-                </ListItem>
-                
-                <ListItem>
-                  <ListItemAvatar>
-                    <Avatar>
-                      <AttachMoney />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText 
-                    primary="Budget" 
-                    secondary={roommate_profile.max_rent_budget ? `$${roommate_profile.max_rent_budget}/month` : 'Not specified'} 
-                  />
-                </ListItem>
-                
-                {roommate_profile.preferred_move_in_date && (
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <Event />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText 
-                      primary="Move-in Date" 
-                      secondary={new Date(roommate_profile.preferred_move_in_date).toLocaleDateString()} 
-                    />
-                  </ListItem>
-                )}
-              </List>
-            </Box>
-            
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Roommate Request
-              </Typography>
-              
-              {matchRequest ? (
-                <>
-                  {matchRequest.status === 'pending' && isIncomingRequest && (
-                    <Box>
-                      <Typography variant="body2" gutterBottom>
-                        This person has sent you a roommate request.
-                      </Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                        <Button 
-                          variant="contained" 
-                          color="primary" 
-                          size="small"
-                          onClick={handleAcceptRequest}
-                        >
-                          Accept
-                        </Button>
-                        <Button 
-                          variant="outlined" 
-                          color="error" 
-                          size="small"
-                          onClick={handleRejectRequest}
-                        >
-                          Decline
-                        </Button>
-                      </Box>
-                    </Box>
-                  )}
-                  
-                  {matchRequest.status === 'pending' && isOutgoingRequest && (
-                    <Box>
-                      <Typography variant="body2" gutterBottom>
-                        You've sent a roommate request.
-                      </Typography>
-                      <Button 
-                        variant="outlined" 
-                        color="error" 
-                        size="small"
-                        onClick={handleCancelRequest}
-                        sx={{ mt: 1 }}
-                      >
-                        Cancel Request
-                      </Button>
-                    </Box>
-                  )}
-                  
-                  {matchRequest.status === 'accepted' && (
-                    <Box>
-                      <Typography variant="body2" color="success.main" gutterBottom>
-                        You are now roommates! Exchange contact information to proceed.
-                      </Typography>
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        Contact: {user.email}
-                      </Typography>
-                    </Box>
-                  )}
-                  
-                  {matchRequest.status === 'rejected' && (
-                    <Typography variant="body2" color="error" gutterBottom>
-                      The roommate request was declined.
-                    </Typography>
-                  )}
-                </>
-              ) : (
-                <Box>
-                  <Typography variant="body2" gutterBottom>
-                    If you're interested in being roommates with {userProfile.first_name}, send a roommate request.
-                  </Typography>
-                  <Button 
-                    variant="contained" 
-                    color="primary"
-                    onClick={() => setMessageDialogOpen(true)}
-                    // src/features/roommate-matching/RoommateDetail.tsx (continued)
-                    sx={{ mt: 1 }}
-                  >
-                    Send Roommate Request
-                  </Button>
-                </Box>
-              )}
-            </Box>
-          </Paper>
-        </Grid>
-        
-        {/* Lifestyle Preferences */}
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h5" gutterBottom>
-              About {userProfile.first_name}
-            </Typography>
-            
-            <Typography variant="body1" paragraph>
-              {userProfile.bio || `${userProfile.first_name} hasn't added a bio yet.`}
-            </Typography>
-            
-            {userProfile.interests && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Interests
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  {userProfile.interests}
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-          
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h5" gutterBottom>
-              Lifestyle Preferences
-            </Typography>
-            
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={6}>
-                <List>
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <SmokingRooms />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText 
-                      primary="SmokingRooms" 
-                      secondary={
-                        roommate_profile.SmokingRooms_preference === 'yes' ? 'Smoker' : 
-                        roommate_profile.SmokingRooms_preference === 'no' ? 'Non-smoker' : 
-                        roommate_profile.SmokingRooms_preference === 'sometimes' ? 'Occasionally' :
-                        'No preference'
-                      } 
-                    />
-                  </ListItem>
-                  
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <LocalBar />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText 
-                      primary="Drinking" 
-                      secondary={
-                        roommate_profile.drinking_preference === 'yes' ? 'Drinker' : 
-                        roommate_profile.drinking_preference === 'no' ? 'Non-drinker' : 
-                        roommate_profile.drinking_preference === 'sometimes' ? 'Occasionally' :
-                        'No preference'
-                      } 
-                    />
-                  </ListItem>
-                </List>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <List>
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <NightsStay />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText 
-                      primary="Sleep Habits" 
-                      secondary={
-                        roommate_profile.sleep_habits === 'early_riser' ? 'Early Riser' : 
-                        roommate_profile.sleep_habits === 'night_owl' ? 'Night Owl' : 
-                        'Average'
-                      } 
-                    />
-                  </ListItem>
-                  
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <MenuBook />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText 
-                      primary="Study Habits" 
-                      secondary={
-                        roommate_profile.study_habits === 'in_room' ? 'Studies in Room' : 
-                        roommate_profile.study_habits === 'library' ? 'Studies in Library' : 
-                        'Studies in Other Places'
-                      } 
-                    />
-                  </ListItem>
-                </List>
-              </Grid>
-              
-              <Grid item xs={12}>
-                <List>
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <People />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText 
-                      primary="Guests Policy" 
-                      secondary={
-                        roommate_profile.guests_preference === 'yes' ? 'Welcomes Guests' : 
-                        roommate_profile.guests_preference === 'no' ? 'Prefers No Guests' : 
-                        roommate_profile.guests_preference === 'sometimes' ? 'Occasional Guests OK' :
-                        'No preference'
-                      } 
-                    />
-                  </ListItem>
-                </List>
-              </Grid>
-            </Grid>
-          </Paper>
-        </Grid>
-      </Grid>
-      
-      {/* Message Dialog */}
-      <Dialog open={messageDialogOpen} onClose={() => setMessageDialogOpen(false)}>
-        <DialogTitle>Send Roommate Request to {userProfile.first_name}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" paragraph>
-            Include a brief message with your request. Tell {userProfile.first_name} a bit about yourself and why you think you'd be good roommates.
-          </Typography>
+      <Typography variant="h4" gutterBottom>
+        {userProfile.first_name || user.username}
+      </Typography>
+
+      <Avatar sx={{ width: 100, height: 100, mb: 2 }}>
+        {(userProfile.first_name || user.username).charAt(0).toUpperCase()}
+      </Avatar>
+
+      {/* Profile Info */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography><strong>Age:</strong> {userProfile.age || 'N/A'}</Typography>
+        <Typography><strong>Gender:</strong> {userProfile.gender}</Typography>
+        <Typography><strong>Major:</strong> {userProfile.course_major}</Typography>
+        <Typography><strong>Bio:</strong> {userProfile.bio}</Typography>
+        <Typography><strong>Interests:</strong> {userProfile.interests}</Typography>
+        <Typography><strong>Cleanliness:</strong> {profile.roommate_profile.cleanliness_level}/5</Typography>
+        <Typography><strong>Budget:</strong> ${profile.roommate_profile.max_rent_budget || 'N/A'}</Typography>
+        <Typography><strong>Move-in Date:</strong> {profile.roommate_profile.preferred_move_in_date || 'N/A'}</Typography>
+      </Paper>
+
+      {/* Match Request UI */}
+      {!matchRequest && (
+        <Box>
+          <Typography gutterBottom>Send a match request:</Typography>
           <TextField
-            autoFocus
-            margin="dense"
-            label="Your Message"
-            type="text"
+            label="Message"
             fullWidth
             multiline
-            rows={4}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            rows={2}
+            value={requestMessage}
+            onChange={(e) => setRequestMessage(e.target.value)}
+            sx={{ mb: 2 }}
           />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMessageDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={handleSendRequest} 
-            color="primary"
-            disabled={!message.trim() || sendingRequest}
-          >
-            {sendingRequest ? <CircularProgress size={24} /> : 'Send Request'}
+          <Button variant="contained" onClick={handleSendRequest} disabled={!requestMessage.trim()}>
+            Send Match Request
           </Button>
-        </DialogActions>
-      </Dialog>
+        </Box>
+      )}
+
+      {matchRequest?.status === 'pending' && isReceiver && (
+        <Box sx={{ mt: 2 }}>
+          <Typography>You have received a match request:</Typography>
+          <Typography>Message: {matchRequest.message}</Typography>
+          <Button variant="contained" color="success" onClick={handleAcceptRequest} sx={{ mr: 1 }}>
+            Accept
+          </Button>
+          <Button variant="outlined" color="error" onClick={handleRejectRequest}>
+            Reject
+          </Button>
+        </Box>
+      )}
+
+      {matchRequest?.status === 'pending' && isSender && (
+        <Box sx={{ mt: 2 }}>
+          <Typography>You have sent a match request.</Typography>
+          <Typography>Message: {matchRequest.message}</Typography>
+          <Button variant="outlined" color="warning" onClick={handleCancelRequest}>
+            Cancel Request
+          </Button>
+        </Box>
+      )}
+
+      {/* Chat Section */}
+      {matchRequest?.status === 'accepted' && (
+        <Paper sx={{ mt: 4, p: 3 }}>
+          <Typography variant="h6" gutterBottom>Chat with {userProfile.first_name || user.username}</Typography>
+
+          {isTyping && (
+            <Typography variant="caption" color="text.secondary">
+              {userProfile.first_name || user.username} is typing...
+            </Typography>
+          )}
+
+          <Box sx={{ height: 300, overflowY: 'auto', mt: 2, mb: 2 }}>
+            {messages.length === 0 ? (
+              <Typography>No messages yet.</Typography>
+            ) : (
+              messages.map((msg) => {
+                const isMe = msg.sender.id === currentUserId;
+                const senderName = msg.sender.first_name || msg.sender.username;
+                const initials = senderName.charAt(0).toUpperCase();
+
+                return (
+                  <Box
+                    key={msg.id}
+                    sx={{
+                      display: 'flex',
+                      flexDirection: isMe ? 'row-reverse' : 'row',
+                      alignItems: 'flex-start',
+                      mb: 1,
+                    }}
+                  >
+                    <Avatar sx={{ bgcolor: isMe ? 'primary.main' : 'grey.500', ml: isMe ? 1 : 0, mr: isMe ? 0 : 1 }}>
+                      {initials}
+                    </Avatar>
+                    <Box sx={{ maxWidth: '70%' }}>
+                      <Paper
+                        sx={{
+                          p: 1.5,
+                          bgcolor: isMe ? 'primary.main' : 'grey.100',
+                          color: isMe ? 'primary.contrastText' : 'text.primary',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="bold">
+                          {senderName}
+                        </Typography>
+                        <Typography variant="body1">{msg.content}</Typography>
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                          {new Date(msg.timestamp).toLocaleString()}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  </Box>
+                );
+              })
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                handleTyping();
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleSendMessage();
+                  e.preventDefault();
+                }
+              }}
+              placeholder="Type a message..."
+            />
+            <Button variant="contained" onClick={handleSendMessage} disabled={!newMessage.trim()}>
+              Send
+            </Button>
+          </Box>
+        </Paper>
+      )}
     </Box>
   );
 };

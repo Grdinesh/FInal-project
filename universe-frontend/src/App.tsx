@@ -29,25 +29,24 @@ import RoommateProfileForm from './features/roommate-matching/RoommateProfileFor
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-// Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
-  
+
   return user ? <>{children}</> : <Navigate to="/login" />;
 };
 
 const theme = createTheme({
   palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#f50057',
-    },
+    primary: { main: '#1976d2' },
+    secondary: { main: '#f50057' },
   },
 });
 
@@ -57,27 +56,26 @@ function AppContent() {
       <CssBaseline />
       <Navbar />
       <Routes>
-        {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        
+
         {/* Protected Routes */}
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
-        
-        {/* Marketplace Routes */}
+
+        {/* Marketplace */}
         <Route path="/marketplace" element={<ProtectedRoute><MarketplaceList /></ProtectedRoute>} />
         <Route path="/marketplace/:id" element={<ProtectedRoute><MarketplaceItemDetail /></ProtectedRoute>} />
         <Route path="/marketplace/create" element={<ProtectedRoute><MarketplaceItemForm /></ProtectedRoute>} />
         <Route path="/marketplace/edit/:id" element={<ProtectedRoute><MarketplaceItemForm /></ProtectedRoute>} />
-        
-        {/* Roommate Matching Routes */}
+
+        {/* Roommate Matching */}
         <Route path="/roommate-matching" element={<ProtectedRoute><RoommateList /></ProtectedRoute>} />
         <Route path="/roommate-matching/:id" element={<ProtectedRoute><RoommateDetail /></ProtectedRoute>} />
         <Route path="/roommate-matching/preferences" element={<ProtectedRoute><RoommateProfileForm /></ProtectedRoute>} />
-        
-        {/* 404 Page */}
+
+        {/* 404 */}
         <Route path="*" element={<div>Page not found</div>} />
       </Routes>
       <Footer />

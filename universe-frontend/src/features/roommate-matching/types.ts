@@ -43,11 +43,31 @@ export interface User {
     created_at: string;
     updated_at: string;
   }
-  
+  export type MatchStatus = 'none' | 'pending' | 'accepted' | 'rejected';
+
   export interface MatchProfile {
     user: User;
     profile: UserProfile;
     roommate_profile: RoommateProfile;
     compatibility_score: number;
-    match_status: 'none' | 'pending' | 'accepted' | 'rejected';
+    match_status: MatchStatus;
   }
+
+  export interface SenderUser {
+    id: number;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    profile_picture?: string | null;
+    
+  }
+  
+  export interface Message {
+    id: string;
+    content: string;
+    sender: SenderUser; // User ID
+    timestamp: string;
+    read?: boolean;
+  }
+  
