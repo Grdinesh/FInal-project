@@ -59,13 +59,22 @@ const RoommateDetail: React.FC = () => {
     }
   };
   useEffect(() => {
+    if (matchRequest?.status !== 'accepted') return;
+  
+    const interval = setInterval(() => {
+      fetchMessages();
+    }, 5000); // every 15 seconds
+  
+    return () => clearInterval(interval);
+  }, [matchRequest]);
+  useEffect(() => {
     let idleTimeout: NodeJS.Timeout;
   
     // If user is not typing and match is accepted, refresh messages after 5s
-    if (!isTyping && matchRequest?.status === 'accepted') {
+    if ( matchRequest?.status === 'accepted') {
       idleTimeout = setTimeout(() => {
         fetchMessages();  // you'll define this separately
-      }, 2000);
+      }, 20);
     }
   
     return () => clearTimeout(idleTimeout);
@@ -296,7 +305,7 @@ const RoommateDetail: React.FC = () => {
                       mb: 1,
                     }}
                   >
-                    <Avatar sx={{ bgcolor: isMe ? 'primary.main' : 'grey.500', ml: isMe ? 1 : 0, mr: isMe ? 0 : 1 }}>
+                    <Avatar src={msg.sender.profile_picture || undefined}>
                       {initials}
                     </Avatar>
                     <Box sx={{ maxWidth: '70%' }}>
