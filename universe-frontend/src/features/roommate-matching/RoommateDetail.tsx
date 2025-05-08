@@ -29,12 +29,6 @@ const RoommateDetail: React.FC = () => {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
 
-  useEffect(() => {
-    console.log("Logged-in user ID:", localStorage.getItem('user_id'));
-    console.log("Current profile ID:", id);
-    console.log("Current match request:", matchRequest);
-  }, [matchRequest]);
-  console.log("Parsed currentUserId:", currentUserId);
   const fetchRoommateProfile = async () => {
     setLoading(true);
     try {
@@ -73,8 +67,8 @@ const RoommateDetail: React.FC = () => {
         const msg: Message = {
           id: String(Date.now()),
           content: data.message.content,
-          sender: parseInt(data.sender_id),
-          timestamp: new Date().toISOString()
+          sender: data.message.sender,
+          timestamp: data.message.timestamp
         };
         setMessages((prev) => [...prev, msg]);
       }
@@ -138,7 +132,6 @@ const RoommateDetail: React.FC = () => {
 
   const handleAcceptRequest = async () => {
     if (!matchRequest) return;
-
     try {
       await axios.post(`/api/match-requests/${matchRequest.id}/accept/`);
       fetchRoommateProfile();
@@ -149,7 +142,6 @@ const RoommateDetail: React.FC = () => {
 
   const handleRejectRequest = async () => {
     if (!matchRequest) return;
-
     try {
       await axios.post(`/api/match-requests/${matchRequest.id}/reject/`);
       setMatchRequest(null);
@@ -160,7 +152,6 @@ const RoommateDetail: React.FC = () => {
 
   const handleCancelRequest = async () => {
     if (!matchRequest) return;
-
     try {
       await axios.delete(`/api/match-requests/${matchRequest.id}/`);
       setMatchRequest(null);
@@ -196,18 +187,11 @@ const RoommateDetail: React.FC = () => {
         {userProfile.first_name || user.username}
       </Typography>
 
-      {userProfile.profile_picture ? (
-        <Avatar
-          alt={`${userProfile.first_name || user.username}'s picture`}
-          src={userProfile.profile_picture}
-          sx={{ width: 100, height: 100, mb: 2 }}
-        />
-      ) : (
-        <Avatar sx={{ width: 100, height: 100, mb: 2 }}>
-          {user.username.charAt(0).toUpperCase()}
-        </Avatar>
-      )}
+      <Avatar sx={{ width: 100, height: 100, mb: 2 }}>
+        {(userProfile.first_name || user.username).charAt(0).toUpperCase()}
+      </Avatar>
 
+      {/* Profile Info */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography><strong>Age:</strong> {userProfile.age || 'N/A'}</Typography>
         <Typography><strong>Gender:</strong> {userProfile.gender}</Typography>
@@ -219,6 +203,7 @@ const RoommateDetail: React.FC = () => {
         <Typography><strong>Move-in Date:</strong> {profile.roommate_profile.preferred_move_in_date || 'N/A'}</Typography>
       </Paper>
 
+      {/* Match Request UI */}
       {!matchRequest && (
         <Box>
           <Typography gutterBottom>Send a match request:</Typography>
@@ -239,43 +224,31 @@ const RoommateDetail: React.FC = () => {
 
       {matchRequest?.status === 'pending' && isReceiver && (
         <Box sx={{ mt: 2 }}>
-        <Typography gutterBottom>You have received a match request:</Typography>
-        <Typography variant="body2" sx={{ mb: 2 }}>
-          Message: {matchRequest.message || 'No message provided.'}
-        </Typography>
-        <Button variant="contained" color="success" onClick={handleAcceptRequest} sx={{ mr: 1 }}>
-          Accept
-        </Button>
-        <Button variant="outlined" color="error" onClick={handleRejectRequest}>
-          Reject
-        </Button>
-      </Box>
+          <Typography>You have received a match request:</Typography>
+          <Typography>Message: {matchRequest.message}</Typography>
+          <Button variant="contained" color="success" onClick={handleAcceptRequest} sx={{ mr: 1 }}>
+            Accept
+          </Button>
+          <Button variant="outlined" color="error" onClick={handleRejectRequest}>
+            Reject
+          </Button>
+        </Box>
       )}
 
       {matchRequest?.status === 'pending' && isSender && (
         <Box sx={{ mt: 2 }}>
           <Typography>You have sent a match request.</Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Message: {matchRequest.message || 'No message provided.'}
-          </Typography>
+          <Typography>Message: {matchRequest.message}</Typography>
           <Button variant="outlined" color="warning" onClick={handleCancelRequest}>
             Cancel Request
           </Button>
         </Box>
       )}
 
+      {/* Chat Section */}
       {matchRequest?.status === 'accepted' && (
         <Paper sx={{ mt: 4, p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            {userProfile.profile_picture && (
-              <Avatar
-                alt={userProfile.first_name}
-                src={userProfile.profile_picture}
-                sx={{ width: 40, height: 40, mr: 1 }}
-              />
-            )}
-            <Typography variant="h6">Chat with {userProfile.first_name || user.username}</Typography>
-          </Box>
+          <Typography variant="h6" gutterBottom>Chat with {userProfile.first_name || user.username}</Typography>
 
           {isTyping && (
             <Typography variant="caption" color="text.secondary">
@@ -287,30 +260,44 @@ const RoommateDetail: React.FC = () => {
             {messages.length === 0 ? (
               <Typography>No messages yet.</Typography>
             ) : (
-              messages.map((msg) => (
-                <Box
-                  key={msg.id}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: msg.sender === user.id ? 'flex-start' : 'flex-end',
-                    mb: 1
-                  }}
-                >
-                  <Paper
+              messages.map((msg) => {
+                const isMe = msg.sender.id === currentUserId;
+                const senderName = msg.sender.first_name || msg.sender.username;
+                const initials = senderName.charAt(0).toUpperCase();
+
+                return (
+                  <Box
+                    key={msg.id}
                     sx={{
-                      p: 2,
-                      bgcolor: msg.sender === user.id ? 'background.paper' : 'primary.main',
-                      color: msg.sender === user.id ? 'text.primary' : 'primary.contrastText',
-                      maxWidth: '70%'
+                      display: 'flex',
+                      flexDirection: isMe ? 'row-reverse' : 'row',
+                      alignItems: 'flex-start',
+                      mb: 1,
                     }}
                   >
-                    <Typography>{msg.content}</Typography>
-                    <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-                      {new Date(msg.timestamp).toLocaleString()}
-                    </Typography>
-                  </Paper>
-                </Box>
-              ))
+                    <Avatar sx={{ bgcolor: isMe ? 'primary.main' : 'grey.500', ml: isMe ? 1 : 0, mr: isMe ? 0 : 1 }}>
+                      {initials}
+                    </Avatar>
+                    <Box sx={{ maxWidth: '70%' }}>
+                      <Paper
+                        sx={{
+                          p: 1.5,
+                          bgcolor: isMe ? 'primary.main' : 'grey.100',
+                          color: isMe ? 'primary.contrastText' : 'text.primary',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="bold">
+                          {senderName}
+                        </Typography>
+                        <Typography variant="body1">{msg.content}</Typography>
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                          {new Date(msg.timestamp).toLocaleString()}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  </Box>
+                );
+              })
             )}
           </Box>
 
@@ -330,11 +317,7 @@ const RoommateDetail: React.FC = () => {
               }}
               placeholder="Type a message..."
             />
-            <Button
-              variant="contained"
-              onClick={handleSendMessage}
-              disabled={!newMessage.trim()}
-            >
+            <Button variant="contained" onClick={handleSendMessage} disabled={!newMessage.trim()}>
               Send
             </Button>
           </Box>

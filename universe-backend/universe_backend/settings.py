@@ -56,7 +56,7 @@ INSTALLED_APPS = [
     # 'allauth.socialaccount',
     # 'allauth.socialaccount.providers.google',
 ]
-ASGI_APPLICATION = 'your_project.asgi.application'
+ASGI_APPLICATION = 'universe_backend.asgi.application'
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels.layers.InMemoryChannelLayer',

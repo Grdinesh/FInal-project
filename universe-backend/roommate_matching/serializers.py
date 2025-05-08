@@ -40,3 +40,10 @@ class MatchProfileSerializer(serializers.Serializer):
     compatibility_score = serializers.FloatField(read_only=True)
     match_status = serializers.CharField(read_only=True)
 
+    def get_profile(self, obj):
+        request = self.context.get('request')
+        return UserProfileSerializer(obj['profile'], context={'request': request}).data
+
+    def get_roommate_profile(self, obj):
+        request = self.context.get('request')
+        return RoommateProfileSerializer(obj['roommate_profile'], context={'request': request}).data

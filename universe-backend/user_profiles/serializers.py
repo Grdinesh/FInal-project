@@ -21,8 +21,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_profile_picture(self, obj):
         if obj.profile_picture:
-            request = self.context.get('request')
-            return request.build_absolute_uri(obj.profile_picture.url)
+            request = self.context.get('request', None)
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url  # fallback to relative URL
         return None
     def update(self, instance, validated_data):
         # Update user's first_name and last_name if provided

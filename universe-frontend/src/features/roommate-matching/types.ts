@@ -52,11 +52,21 @@ export interface User {
     compatibility_score: number;
     match_status: MatchStatus;
   }
+
+  export interface SenderUser {
+    id: number;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    profile_picture?: string | null;
+    
+  }
   
   export interface Message {
     id: string;
     content: string;
-    sender: number; // User ID
+    sender: SenderUser; // User ID
     timestamp: string;
     read?: boolean;
   }
