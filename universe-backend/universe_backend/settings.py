@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'user_profiles',
     'marketplace',
     'roommate_matching',
+    'housing',
 
     'auth_api',  
     # 'django.contrib.sites',
