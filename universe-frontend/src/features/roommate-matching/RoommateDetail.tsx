@@ -305,7 +305,7 @@ const RoommateDetail: React.FC = () => {
                       mb: 1,
                     }}
                   >
-                    <Avatar sx={{ bgcolor: isMe ? 'primary.main' : 'grey.500', ml: isMe ? 1 : 0, mr: isMe ? 0 : 1 }}>
+                    <Avatar src={msg.sender.profile_picture || undefined}>
                       {initials}
                     </Avatar>
                     <Box sx={{ maxWidth: '70%' }}>

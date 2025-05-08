@@ -1,11 +1,29 @@
 # roommate_matching/serializers.py
 from rest_framework import serializers
-from .models import MatchRequest, CompatibilityScore,Message
+from .models import MatchRequest, CompatibilityScore,Message,User
 from user_profiles.serializers import UserSerializer, UserProfileSerializer, RoommateProfileSerializer
 from user_profiles.models import UserProfile, RoommateProfile
 
+class SenderSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'profile_picture']
+
+    def get_profile_picture(self, obj):
+        try:
+            profile = obj.profile
+            if profile.profile_picture:
+                request = self.context.get('request')
+                if request:
+                    return request.build_absolute_uri(profile.profile_picture.url)
+                return profile.profile_picture.url
+        except Exception:
+            return None
+
 class MessageSerializer(serializers.ModelSerializer):
-    sender = UserSerializer(read_only=True)
+    sender = SenderSerializer(read_only=True)
     
     class Meta:
         model = Message
