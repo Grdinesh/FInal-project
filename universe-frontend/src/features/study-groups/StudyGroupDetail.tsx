@@ -1,21 +1,26 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Box, Typography, Paper, TextField, Button, CircularProgress, List, ListItem, ListItemText, Avatar
+  Box, Typography, Paper, TextField, Button, CircularProgress, List, ListItem,
+  ListItemText, Avatar, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { StudyGroup, GroupMembership, GroupMessage } from './types';
 
 const StudyGroupDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const userId = parseInt(localStorage.getItem('user_id') || '0');
 
   const [group, setGroup] = useState<StudyGroup | null>(null);
   const [membership, setMembership] = useState<GroupMembership | null>(null);
   const [pendingRequests, setPendingRequests] = useState<GroupMembership[]>([]);
+  const [acceptedMembers, setAcceptedMembers] = useState<GroupMembership[]>([]);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [selectedMemberToRemove, setSelectedMemberToRemove] = useState<GroupMembership | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -37,7 +42,11 @@ const StudyGroupDetail: React.FC = () => {
     const pending = res.data.filter(
       (r: GroupMembership) => r.group === parseInt(id!) && !r.is_accepted
     );
+    const accepted = res.data.filter(
+      (r: GroupMembership) => r.group === parseInt(id!) && r.is_accepted && r.user !== group.creator
+    );
     setPendingRequests(pending);
+    setAcceptedMembers(accepted);
   };
 
   const fetchMessages = async () => {
@@ -94,6 +103,32 @@ const StudyGroupDetail: React.FC = () => {
     setNewMessage('');
   };
 
+  const handleDeleteGroup = async () => {
+    if (!window.confirm('Are you sure you want to delete this group? This cannot be undone.')) return;
+    try {
+      await axios.delete(`/api/study-groups/groups/${id}/`);
+      navigate('/study-groups');
+    } catch (err) {
+      console.error('Failed to delete group:', err);
+    }
+  };
+
+  const openRemoveDialog = (member: GroupMembership) => {
+    setSelectedMemberToRemove(member);
+    setRemoveDialogOpen(true);
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!selectedMemberToRemove) return;
+    try {
+      await axios.delete(`/api/study-groups/memberships/${selectedMemberToRemove.id}/`);
+      await fetchPendingRequests();
+      setRemoveDialogOpen(false);
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       await fetchGroup();
@@ -124,7 +159,7 @@ const StudyGroupDetail: React.FC = () => {
       }
     };
 
-    const interval = setInterval(fetchMessages, 5000); // fallback polling
+    const interval = setInterval(fetchMessages, 5000);
 
     return () => {
       socket.close();
@@ -153,8 +188,26 @@ const StudyGroupDetail: React.FC = () => {
       <Typography sx={{ my: 2 }}>{group.description}</Typography>
       <Typography variant="caption">Tags: {group.subject_tags.join(', ')}</Typography>
 
-      {/* Request to Join */}
-      {group && group.creator !== userId && !membership && (
+      {isCreator && (
+        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={() => navigate(`/study-groups/edit/${id}`)}
+          >
+            Edit Group
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={handleDeleteGroup}
+          >
+            Delete Group
+          </Button>
+        </Box>
+      )}
+
+      {!isCreator && !membership && (
         <Box sx={{ mt: 3 }}>
           <Button variant="contained" onClick={handleJoinRequest}>
             Request to Join
@@ -162,17 +215,15 @@ const StudyGroupDetail: React.FC = () => {
         </Box>
       )}
 
-      {/* Pending Request Message */}
       {membership && !membership.is_accepted && (
         <Typography sx={{ mt: 3 }}>
           Your request is pending approval.
         </Typography>
       )}
 
-      {/* Creator Only: Pending Join Requests */}
       {isCreator && pendingRequests.length > 0 && (
         <Paper sx={{ mt: 4, p: 2 }}>
-          <Typography variant="h6" gutterBottom>Pending Join Requests</Typography>
+          <Typography variant="h6">Pending Join Requests</Typography>
           <List>
             {pendingRequests.map((req) => (
               <ListItem key={req.id} divider>
@@ -181,12 +232,8 @@ const StudyGroupDetail: React.FC = () => {
                   secondary={`Requested at: ${new Date(req.requested_at).toLocaleString()}`}
                 />
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button variant="outlined" color="success" onClick={() => handleAcceptRequest(req.id)}>
-                    Accept
-                  </Button>
-                  <Button variant="outlined" color="error" onClick={() => handleRejectRequest(req.id)}>
-                    Reject
-                  </Button>
+                  <Button variant="outlined" color="success" onClick={() => handleAcceptRequest(req.id)}>Accept</Button>
+                  <Button variant="outlined" color="error" onClick={() => handleRejectRequest(req.id)}>Reject</Button>
                 </Box>
               </ListItem>
             ))}
@@ -194,11 +241,25 @@ const StudyGroupDetail: React.FC = () => {
         </Paper>
       )}
 
-      {/* Group Chat UI */}
+      {isCreator && acceptedMembers.length > 0 && (
+        <Paper sx={{ mt: 4, p: 2 }}>
+          <Typography variant="h6">Accepted Members</Typography>
+          <List>
+            {acceptedMembers.map((member) => (
+              <ListItem key={member.id} divider>
+                <ListItemText primary={`User ID: ${member.user}`} />
+                <Button variant="outlined" color="warning" onClick={() => openRemoveDialog(member)}>
+                  Remove
+                </Button>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+
       {membership?.is_accepted && (
         <Paper sx={{ mt: 4, p: 3 }}>
           <Typography variant="h6">Group Chat</Typography>
-
           <Box sx={{ maxHeight: 300, overflowY: 'auto', mt: 2, mb: 2 }}>
             {messages.map((msg) => {
               const isMe = msg.sender.id === userId;
@@ -261,6 +322,22 @@ const StudyGroupDetail: React.FC = () => {
           </Box>
         </Paper>
       )}
+
+      {/* Remove Member Dialog */}
+      <Dialog open={removeDialogOpen} onClose={() => setRemoveDialogOpen(false)}>
+        <DialogTitle>Remove Member</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to remove this member from the group? They will be able to request again later.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmRemove} color="error" variant="contained">
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

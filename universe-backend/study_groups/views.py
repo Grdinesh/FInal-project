@@ -30,7 +30,7 @@ class StudyGroupViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         group = serializer.save(creator=self.request.user)
 
-        # 👇 Automatically create accepted membership for creator
+        # ✅ Creator is auto-member
         GroupMembership.objects.create(
             group=group,
             user=self.request.user,
@@ -39,9 +39,15 @@ class StudyGroupViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance.group.creator != request.user:
-            return Response({"detail": "Only the group creator can reject requests."}, status=403)
+        if instance.creator != request.user:
+            return Response({"detail": "Only the group creator can delete this group."}, status=403)
         return super().destroy(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.creator != request.user:
+            return Response({"detail": "Only the group creator can edit this group."}, status=403)
+        return super().update(request, *args, **kwargs)
 
 class GroupMessageViewSet(viewsets.ModelViewSet):
     queryset = GroupMessage.objects.all()
@@ -89,3 +95,11 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_403_FORBIDDEN)
 
         return super().partial_update(request, *args, **kwargs)
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        # ✅ Only creator can remove others
+        if instance.group.creator != request.user:
+            return Response({"detail": "Only the group creator can remove or reject members."}, status=403)
+
+        return super().destroy(request, *args, **kwargs)
