@@ -42,6 +42,9 @@ const HomePage: React.FC = () => {
                 <Button variant="outlined" color="inherit" component={Link} to="/roommate-matching">
                   Find Roommates
                 </Button>
+                <Button variant="outlined" color="inherit" component={Link} to="/study-groups">
+                  Study Groups
+                </Button>
               </>
             ) : (
               // User is not logged in - show login/register buttons
@@ -79,6 +82,12 @@ const HomePage: React.FC = () => {
             desc: 'Discover the best housing options near campus that fit your budget and preferences.',
             to: user ? "/housing" : "/login",
             button: 'Find Housing',
+          },
+          {
+            title: 'Study Groups',
+            desc: 'Form or join study groups based on your courses and subjects of interest. Chat, collaborate, and learn together.',
+            to: user ? "/study-groups" : "/login",
+            button: 'Explore Groups',
           }
         ].map((feature, idx) => (
           <Grid item xs={12} sm={6} md={4} key={idx}>
