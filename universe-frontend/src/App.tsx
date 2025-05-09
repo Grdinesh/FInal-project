@@ -28,6 +28,7 @@ import RoommateProfileForm from './features/roommate-matching/RoommateProfileFor
 
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { HousingDetail, HousingForm, HousingList } from './features/housing';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -74,6 +75,12 @@ function AppContent() {
         <Route path="/roommate-matching" element={<ProtectedRoute><RoommateList /></ProtectedRoute>} />
         <Route path="/roommate-matching/:id" element={<ProtectedRoute><RoommateDetail /></ProtectedRoute>} />
         <Route path="/roommate-matching/preferences" element={<ProtectedRoute><RoommateProfileForm /></ProtectedRoute>} />
+
+        {/* Housing locator */}
+        <Route path="/housing" element={<ProtectedRoute><HousingList /></ProtectedRoute>} />
+        <Route path="/housing/create" element={<ProtectedRoute><HousingForm /></ProtectedRoute>} />
+        <Route path="/housing/:id" element={<ProtectedRoute><HousingDetail /></ProtectedRoute>} />
+        <Route path="/housing/edit/:id" element={<ProtectedRoute><HousingForm /></ProtectedRoute>} />
 
         {/* 404 */}
         <Route path="*" element={<div>Page not found</div>} />

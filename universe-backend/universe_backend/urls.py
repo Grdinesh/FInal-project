@@ -30,6 +30,8 @@ from rest_framework import status
 from django.conf import settings
 from django.conf.urls.static import static
 from roommate_matching.views import MatchRequestViewSet, RoommateMatchingViewSet, MessageViewSet
+from housing.views import HousingListingViewSet, HousingMessageViewSet, HousingImageViewSet
+
 # from auth_api.views import AuthViewSet, CustomAuthToken
 
 # User serializer
@@ -87,6 +89,12 @@ router.register(r'marketplace-messages', MarketplaceMessageViewSet)
 router.register(r'match-requests', MatchRequestViewSet)
 router.register(r'roommate-matches', RoommateMatchingViewSet, basename='roommate-matches')
 router.register(r'messages', MessageViewSet)
+
+router.register(r'housing', HousingListingViewSet)
+router.register(r'housing-messages', HousingMessageViewSet)
+router.register(r'housing-images', HousingImageViewSet)
+
+
 
 # urlpatterns = [
 #     path('admin/', admin.site.urls),

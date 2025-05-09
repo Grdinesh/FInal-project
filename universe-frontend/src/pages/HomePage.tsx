@@ -42,6 +42,9 @@ const HomePage: React.FC = () => {
                 <Button variant="outlined" color="inherit" component={Link} to="/roommate-matching">
                   Find Roommates
                 </Button>
+                <Button variant="outlined" color="inherit" component={Link} to="/housing">
+                  Housing
+                </Button>
               </>
             ) : (
               // User is not logged in - show login/register buttons
