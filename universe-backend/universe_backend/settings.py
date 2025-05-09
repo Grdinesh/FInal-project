@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     'marketplace',
     'roommate_matching',
     'housing',
-
+    'study_groups',
     'auth_api',  
     'channels',
     # 'django.contrib.sites',

@@ -112,5 +112,6 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/auth/', include('auth_api.urls')),
     path('api-auth/', include('rest_framework.urls')),
+    path('api/study-groups/', include('study_groups.urls')),
     # path('api/token-auth/', CustomAuthToken.as_view()),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
