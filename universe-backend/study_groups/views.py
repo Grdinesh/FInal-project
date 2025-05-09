@@ -1,4 +1,5 @@
 # study_groups/views.py
+from django.db import models
 from rest_framework import viewsets, permissions
 from .models import StudyGroup, GroupMembership, GroupMessage
 from .serializers import StudyGroupSerializer, GroupMembershipSerializer, GroupMessageSerializer
@@ -21,12 +22,26 @@ class StudyGroupViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(matching_groups, many=True)
         return Response(serializer.data)
+    
     queryset = StudyGroup.objects.all()
     serializer_class = StudyGroupSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save(creator=self.request.user)
+        group = serializer.save(creator=self.request.user)
+
+        # 👇 Automatically create accepted membership for creator
+        GroupMembership.objects.create(
+            group=group,
+            user=self.request.user,
+            is_accepted=True
+        )
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.group.creator != request.user:
+            return Response({"detail": "Only the group creator can reject requests."}, status=403)
+        return super().destroy(request, *args, **kwargs)
 
 class GroupMessageViewSet(viewsets.ModelViewSet):
     queryset = GroupMessage.objects.all()
@@ -49,11 +64,28 @@ class GroupMessageViewSet(viewsets.ModelViewSet):
             return GroupMessage.objects.none()
 
         return GroupMessage.objects.filter(group_id=group_id).order_by('timestamp')
+    def perform_create(self, serializer):
+        group_id = self.request.data.get('group')
+        serializer.save(sender=self.request.user, group_id=group_id)
 
-class GroupMessageViewSet(viewsets.ModelViewSet):
-    queryset = GroupMessage.objects.all()
-    serializer_class = GroupMessageSerializer
+class GroupMembershipViewSet(viewsets.ModelViewSet):
+    queryset = GroupMembership.objects.all()
+    serializer_class = GroupMembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        return GroupMembership.objects.filter(
+            models.Q(user=user) | models.Q(group__creator=user)
+        )
+
     def perform_create(self, serializer):
-        serializer.save(sender=self.request.user)
+        serializer.save(user=self.request.user)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.group.creator != request.user:
+            return Response({"detail": "Only the group creator can accept requests."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        return super().partial_update(request, *args, **kwargs)
