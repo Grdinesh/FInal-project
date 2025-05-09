@@ -8,7 +8,7 @@ class UserProfile(models.Model):
     last_name = models.CharField(max_length=100, blank=True)
     age = models.IntegerField(null=True, blank=True)
     gender = models.CharField(max_length=20, blank=True)
-    interests = models.TextField(blank=True)
+    interests = models.TextField(blank=True, help_text="Comma-separated topics you're interested in")
     course_major = models.CharField(max_length=100, blank=True)
     bio = models.TextField(blank=True)
     profile_picture = models.ImageField(upload_to='profile_pics', null=True, blank=True)

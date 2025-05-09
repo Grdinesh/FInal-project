@@ -28,6 +28,7 @@ const RoommateDetail: React.FC = () => {
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fetchMessages = async () => {
     if (!matchRequest?.id) return;
   
@@ -58,6 +59,12 @@ const RoommateDetail: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, [messages]);
   useEffect(() => {
     if (matchRequest?.status !== 'accepted') return;
   
@@ -123,13 +130,17 @@ const RoommateDetail: React.FC = () => {
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !matchRequest) return;
-
+  
     try {
       const res = await axios.post('/api/messages/', {
         match_request: matchRequest.id,
         content: newMessage.trim()
       });
-
+  
+      // ✅ Optimistically add the message to UI immediately
+      setMessages(prev => [...prev, res.data]);
+  
+      // ✅ Send via WebSocket (optional redundancy)
       if (socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(
           JSON.stringify({
@@ -138,12 +149,13 @@ const RoommateDetail: React.FC = () => {
           })
         );
       }
-
+  
       setNewMessage('');
     } catch (err) {
       console.error('Failed to send message:', err);
     }
   };
+  
 
   const handleSendRequest = async () => {
     try {
@@ -305,7 +317,10 @@ const RoommateDetail: React.FC = () => {
                       mb: 1,
                     }}
                   >
-                    <Avatar src={msg.sender.profile_picture || undefined}>
+                    <Avatar
+                      sx={{ bgcolor: isMe ? 'primary.main' : 'grey.500', ml: isMe ? 1 : 0, mr: isMe ? 0 : 1 }}
+                      src={msg.sender.profile_picture || undefined}
+                    >
                       {initials}
                     </Avatar>
                     <Box sx={{ maxWidth: '70%' }}>
@@ -329,6 +344,7 @@ const RoommateDetail: React.FC = () => {
                 );
               })
             )}
+            <div ref={messagesEndRef} />
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1 }}>

@@ -26,6 +26,11 @@ import RoommateList from './features/roommate-matching/RoommateList';
 import RoommateDetail from './features/roommate-matching/RoommateDetail';
 import RoommateProfileForm from './features/roommate-matching/RoommateProfileForm';
 
+// Study-Groups
+import StudyGroupList from './features/study-groups/StudyGroupList';
+import SuggestedGroups from './features/study-groups/SuggestedGroups';
+import StudyGroupForm from './features/study-groups/StudyGroupForm';
+import StudyGroupDetail from './features/study-groups/StudyGroupDetail';
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -75,6 +80,11 @@ function AppContent() {
         <Route path="/roommate-matching/:id" element={<ProtectedRoute><RoommateDetail /></ProtectedRoute>} />
         <Route path="/roommate-matching/preferences" element={<ProtectedRoute><RoommateProfileForm /></ProtectedRoute>} />
 
+        {/* StudyGroups */}
+        <Route path="/study-groups" element={<ProtectedRoute><StudyGroupList /></ProtectedRoute>} />
+        <Route path="/study-groups/suggested" element={<ProtectedRoute><SuggestedGroups /></ProtectedRoute>} />
+        <Route path="/study-groups/create" element={<ProtectedRoute><StudyGroupForm /></ProtectedRoute>} />
+        <Route path="/study-groups/:id" element={<ProtectedRoute><StudyGroupDetail /></ProtectedRoute>} />
         {/* 404 */}
         <Route path="*" element={<div>Page not found</div>} />
       </Routes>
