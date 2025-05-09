@@ -22,7 +22,7 @@ export interface User {
   export interface RoommateProfile {
     id: number;
     user_profile: UserProfile;
-    SmokingRooms_preference: string;
+    smoking_preference: string;
     drinking_preference: string;
     sleep_habits: string;
     study_habits: string;

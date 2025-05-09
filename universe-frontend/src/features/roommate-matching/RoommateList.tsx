@@ -77,7 +77,7 @@ const RoommateList: React.FC = () => {
       result = result.filter(match => match.roommate_profile.study_habits === filters.studyHabits);
     }
     if (filters.SmokingRoomsPreference) {
-      result = result.filter(match => match.roommate_profile.SmokingRooms_preference === filters.SmokingRoomsPreference);
+      result = result.filter(match => match.roommate_profile.smoking_preference === filters.SmokingRoomsPreference);
     }
     if (filters.drinkingPreference) {
       result = result.filter(match => match.roommate_profile.drinking_preference === filters.drinkingPreference);
@@ -387,8 +387,8 @@ const RoommateList: React.FC = () => {
                         size="small"
                       />
                       <Chip 
-                        label={match.roommate_profile.SmokingRooms_preference === 'yes' ? 'Smoker' : 
-                              match.roommate_profile.SmokingRooms_preference === 'no' ? 'Non-Smoker' : 'Occasional Smoker'}
+                        label={match.roommate_profile.smoking_preference === 'yes' ? 'Smoker' : 
+                              match.roommate_profile.smoking_preference === 'no' ? 'Non-Smoker' : 'Occasional Smoker'}
                         size="small"
                       />
                     </Box>
