@@ -4,39 +4,17 @@ from rest_framework import viewsets, permissions
 from .models import StudyGroup, GroupMembership, GroupMessage
 from .serializers import StudyGroupSerializer, GroupMembershipSerializer, GroupMessageSerializer
 from rest_framework.decorators import action
-
+from rest_framework.response import Response
 
 class StudyGroupViewSet(viewsets.ModelViewSet):
-
-    @action(detail=False, methods=['get'], url_path='suggested')
-    def suggested_groups(self, request):
-        user_profile = request.user.profile  # Assumes a related `UserProfile` model
-        if not user_profile.interests:
-            return Response([], status=200)
-
-        user_interests = [i.strip().lower() for i in user_profile.interests.split(',') if i.strip()]
-        
-        matching_groups = StudyGroup.objects.filter(
-            subject_tags__overlap=user_interests
-        ).exclude(creator=request.user)
-
-        serializer = self.get_serializer(matching_groups, many=True)
-        return Response(serializer.data)
-    
     queryset = StudyGroup.objects.all()
     serializer_class = StudyGroupSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
         group = serializer.save(creator=self.request.user)
+        GroupMembership.objects.create(group=group, user=self.request.user, is_accepted=True)
 
-        # ✅ Creator is auto-member
-        GroupMembership.objects.create(
-            group=group,
-            user=self.request.user,
-            is_accepted=True
-        )
-    
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.creator != request.user:
@@ -48,6 +26,31 @@ class StudyGroupViewSet(viewsets.ModelViewSet):
         if instance.creator != request.user:
             return Response({"detail": "Only the group creator can edit this group."}, status=403)
         return super().update(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = self.get_serializer(instance).data
+
+        if request.user == instance.creator:
+            pending = GroupMembership.objects.filter(group=instance, is_accepted=False)
+            accepted = GroupMembership.objects.filter(group=instance, is_accepted=True).exclude(user=request.user)
+
+            data['pending_requests'] = GroupMembershipSerializer(pending, many=True).data
+            data['accepted_members'] = GroupMembershipSerializer(accepted, many=True).data
+
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='suggested')
+    def suggested_groups(self, request):
+        user_profile = request.user.profile
+        if not user_profile.interests:
+            return Response([], status=200)
+
+        user_interests = [i.strip().lower() for i in user_profile.interests.split(',') if i.strip()]
+        matching_groups = StudyGroup.objects.filter(subject_tags__overlap=user_interests).exclude(creator=request.user)
+
+        serializer = self.get_serializer(matching_groups, many=True)
+        return Response(serializer.data)
 
 class GroupMessageViewSet(viewsets.ModelViewSet):
     queryset = GroupMessage.objects.all()
